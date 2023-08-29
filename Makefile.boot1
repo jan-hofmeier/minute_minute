@@ -17,10 +17,10 @@ export TARGET		:=	minute_minute
 export BUILD		?=	debug_boot1
 
 R_SOURCES			:=	
-SOURCES				:=	source source/fatfs externals/inih
+SOURCES				:=	source source/fatfs externals/inih source/nand source/nand/isfs
 
 R_INCLUDES			:=	
-INCLUDES 			:=	source source/fatfs externals/inih
+INCLUDES 			:=	source source/fatfs externals/inih source/nand source/nand/isfs
 
 DATA				:=	
 

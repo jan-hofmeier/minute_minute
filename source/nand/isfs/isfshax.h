@@ -9,7 +9,7 @@
 #pragma once
 #include <stddef.h>
 #include "types.h"
-#include "nand.h"
+#include "nand/nand.h"
 #include "isfs.h"
 
 #define ISFSHAX_MAGIC               0x48415858

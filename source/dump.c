@@ -20,7 +20,7 @@
 #include "sdhc.h"
 #include "sdcard.h"
 #include "mlc.h"
-#include "nand.h"
+#include "nand/nand.h"
 #include "main.h"
 #include "prsh.h"
 #include "latte.h"
@@ -321,12 +321,12 @@ void _dump_sync_seeprom_boot1_versions(void)
     u16 original_version_2 = seeprom_decrypted.boot1_copy_params.version;
 
     {
-        int bank = NAND_BANK_SLC;
+        int bank = BANK_SLC;
         if (!(seeprom_decrypted.boot1_params.sector >> 12)) {
-            bank = NAND_BANK_SLCCMPT;
+            bank = BANK_SLCCMPT;
         }
         int page = (seeprom_decrypted.boot1_params.sector & 0xFFF) * 0x40;
-        nand_initialize(bank);
+        nand_enable_banks(bank);
         nand_read_page(page, nand_page_buf, nand_ecc_buf);
         nand_wait();
         dc_invalidaterange(nand_page_buf, PAGE_SIZE);
