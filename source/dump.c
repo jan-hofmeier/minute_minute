@@ -862,7 +862,8 @@ int _dump_compare_mlc(u32 base){
     }
 
 
-    for(int compare = 0; compare < 20; compare ++){
+    for(int compare = 0; compare < 200; compare ++){
+    printf("Iteratio: %d\n", compare);
     
     char name[64];
     sprintf(name, "sdmc:/mlc_compare-%d.log", compare);
@@ -885,8 +886,8 @@ int _dump_compare_mlc(u32 base){
     }
 
     // Do one less iteration than we need, due to having to special case the start and end.
-    u32 sdcard_sector = base;
     u32 mlc_sector = 0;
+    u32 sdcard_sector = mlc_sector + base;
 
     while(mlc_sector < (TOTAL_SECTORS - SDHC_BLOCK_COUNT_MAX))
     {
