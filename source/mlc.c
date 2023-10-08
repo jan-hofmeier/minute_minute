@@ -759,6 +759,160 @@ int mlc_erase(void){
 #endif
 }
 
+static int
+mmc_send_cxd_data_hynix(u32 opcode, void *buf, unsigned len)
+{
+	struct mmc_request mrq = {NULL};
+	struct mmc_command cmd = {0};
+	struct mmc_data data = {0};
+	struct scatterlist sg;
+
+	mrq.cmd = &cmd;
+	mrq.data = &data;
+
+	cmd.opcode = opcode;
+	cmd.arg = 0x53454852;
+
+	/* NOTE HACK:  the MMC_RSP_SPI_R1 is always correct here, but we
+	 * rely on callers to never use this with "native" calls for reading
+	 * CSD or CID.  Native versions of those commands use the R2 type,
+	 * not R1 plus a data block.
+	 */
+	cmd.flags = MMC_RSP_SPI_R1 | MMC_RSP_R1 | MMC_CMD_ADTC;
+
+	data.blksz = len;
+	data.blocks = 1;
+	data.flags = MMC_DATA_READ;
+	data.sg = &sg;
+	data.sg_len = 1;
+
+	sg_init_one(&sg, buf, len);
+
+	if (opcode == MMC_SEND_CSD || opcode == MMC_SEND_CID) {
+		/*
+		 * The spec states that CSR and CID accesses have a timeout
+		 * of 64 clock cycles.
+		 */
+		data.timeout_ns = 0;
+		data.timeout_clks = 64;
+	} else
+		mmc_set_data_timeout(&data, card);
+
+	mmc_wait_for_req(host, &mrq);
+
+	if (cmd.error)
+		return cmd.error;
+	if (data.error)
+		return data.error;
+
+	return 0;
+}
+
+static int mmc_get_ext_csd_hynix(struct mmc_card *card, u8 **new_ext_csd)
+{
+	int err;
+	u8 *ext_csd;
+
+	if (!card || !new_ext_csd)
+		return -EINVAL;
+
+	if (!mmc_can_ext_csd(card))
+		return -EOPNOTSUPP;
+
+	/*
+	 * As the ext_csd is so large and mostly unused, we don't store the
+	 * raw block in mmc_card.
+	 */
+	ext_csd = kzalloc(512, GFP_KERNEL);
+	if (!ext_csd)
+		return -ENOMEM;
+
+	err = mmc_send_cxd_data_hynix(card, card->host, MMC_SEND_EXT_CSD, ext_csd,
+				512);
+	if (err)
+		kfree(ext_csd);
+	else
+		*new_ext_csd = ext_csd;
+
+	return err;
+}
+
+static int hynix_mmc_nand_info_get_v0(char *buf, u8 *nand_info)
+{
+    struct sdmmc_command cmd = { 0 };
+	int n = 0;
+
+	cmd.c_opcode = 60;
+	cmd.c_arg = 0x534D4900;
+	cmd.c_flags = SCF_RSP_R1;
+    sdhc_exec_command(card.handle, &cmd);
+	if (cmd.c_error){
+		pr_err("[VSM] mlc: VSM_HYNIX_ARG_1 CMD err(%d)\n", cmd.c_error);
+        return cmd.c_error;
+    }
+
+	usleep_range(1000, 1500);
+    memset(&cmd, 0, sizeof(cmd));
+
+	cmd.c_opcode = 60;
+	cmd.c_arg = 0x48525054;
+	cmd.c_flags = SCF_RSP_R1;
+
+	sdhc_exec_command(card.handle, &cmd);
+	if (cmd.c_error){
+		printf("[VSM] mlc: VSM_HYNIX_ARG_2 CMD err(%d)\n", cmd.c_error);
+        return cmd.c_error;
+    }
+
+	/* read NAND INFO */
+    u8 *ext_csd;
+	int err = mmc_get_ext_csd(card, &ext_csd);
+	
+	if (err) {
+		pr_err("[VSM] mlc: hynix_mmc_nand_info_get Read err(%d)\n", err);
+		return err;
+	}
+	memcpy(nand_info, ext_csd, 512);
+	free(ext_csd);
+
+	n = snprintf(buf, 1026,
+	"Reserved Blocks(SLC):%08x\n"
+	"Maximum block erase(SLC):%08x\n"
+	"Minimum block erase(SLC):%08x\n"
+	"Average block erase(SLC):%08x\n"
+	"Reserved Blocks(MLC):%08x\n"
+	"Maximum block erase(MLC):%08x\n"
+	"Minimum block erase(MLC):%08x\n"
+	"Average block erase(MLC):%08x\n"
+	"Reserved Blocks(SLC+MLC):%08x\n"
+	"Cumulative initialization count:%08x\n"
+	"Cumulative written data size:%08x\n"
+	"Cumulative read data size:%08x\n"
+	"Runtime Bad block count:%08x\n"
+	"Read Reclaim count:%08x\n"
+	"VCC Drop count:%08x\n"
+	,
+	nand_info[35]<<24|nand_info[34]<<16|nand_info[33]<<8|nand_info[32],
+	nand_info[39]<<24|nand_info[38]<<16|nand_info[37]<<8|nand_info[36],
+	nand_info[43]<<24|nand_info[42]<<16|nand_info[41]<<8|nand_info[40],
+	nand_info[47]<<24|nand_info[46]<<16|nand_info[45]<<8|nand_info[44],
+	nand_info[51]<<24|nand_info[50]<<16|nand_info[49]<<8|nand_info[48],
+	nand_info[55]<<24|nand_info[54]<<16|nand_info[53]<<8|nand_info[52],
+	nand_info[59]<<24|nand_info[58]<<16|nand_info[57]<<8|nand_info[56],
+	nand_info[63]<<24|nand_info[62]<<16|nand_info[61]<<8|nand_info[60],
+	nand_info[67]<<24|nand_info[66]<<16|nand_info[65]<<8|nand_info[64],
+	nand_info[95]<<24|nand_info[94]<<16|nand_info[93]<<8|nand_info[92],
+	nand_info[99]<<24|nand_info[98]<<16|nand_info[97]<<8|nand_info[96],
+	nand_info[103]<<24|nand_info[102]<<16|nand_info[101]<<8|nand_info[100],
+	nand_info[107]<<24|nand_info[106]<<16|nand_info[105]<<8|nand_info[104],
+	nand_info[139]<<24|nand_info[138]<<16|nand_info[137]<<8|nand_info[136],
+	nand_info[143]<<24|nand_info[142]<<16|nand_info[141]<<8|nand_info[140]
+
+	);
+
+	return 0;
+}
+
 void mlc_init(void)
 {
     struct sdhc_host_params params = {
