@@ -311,7 +311,7 @@ u32 _main(void *base)
     serial_send_u32(0x4D454D30); // MEM0
 
     // Clear all MEM0
-    memset((void*)0x08000000, 0, 0x002E0000);
+    //memset((void*)0x08000000, 0, 0x002E0000);
 
     // Standby Mode boot doesn't need to upclock
     if (!(pflags_val & PON_SMC_TIMER))
@@ -403,6 +403,15 @@ retry_sd:
                 goto fat_fail;
             }
         }
+
+        res = f_open(&f, "sdmc:/crypto.dmp", FA_OPEN_EXISTING | FA_WRITE);
+        if (res != FR_OK){
+            unsigned int written;
+            f_write(&f, (void*)0x08280000, 0x30000, &written);
+            f_close(&f);
+        }
+
+
         res = f_open(&f, "sdmc:/fw.img", FA_OPEN_EXISTING | FA_READ);
         if (res != FR_OK) {
             goto fat_fail;
