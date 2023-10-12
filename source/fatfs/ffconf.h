@@ -9,7 +9,7 @@
 /---------------------------------------------------------------------------*/
 
 #ifdef MINUTE_BOOT1
-#define _FS_READONLY    1
+#define _FS_READONLY    0
 #define _FS_MINIMIZE    3
 #define _USE_STRFUNC    0
 #define _USE_FIND       0

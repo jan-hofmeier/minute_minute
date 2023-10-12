@@ -102,8 +102,6 @@ u32 _main(void *base)
     (void)base;
     int res = 0; (void)res;
 
-    gfx_init();
-    printf("minute loading\n");
 
     serial_force_terminate();
     udelay(500);
@@ -142,7 +140,7 @@ u32 _main(void *base)
     }
 
     // Read OTP and SEEPROM
-    crypto_initialize();
+    //crypto_initialize();
     printf("crypto support initialized\n");
 
 
@@ -381,7 +379,7 @@ u32 _main(void *base)
 retry_sd:
     serial_send_u32(0x5D5D0001);
     printf("Initializing SD card...\n");
-    sdcard_init();
+
     serial_send_u32(0x6D6D0001);
 
     int loaded_from_fat = 0;
@@ -395,98 +393,36 @@ retry_sd:
 
         serial_send_u32(0x5D5E0004);
 
-        res = f_mount(&fatfs, "sdmc:", 1);
-        if (res != FR_OK) {
-            sdcard_init(); // TODO whyyyyy
+        do {
+            sdcard_init();
             res = f_mount(&fatfs, "sdmc:", 1);
-            if (res != FR_OK) {
-                goto fat_fail;
-            }
-        }
+        }while(res != FR_OK);
 
-        res = f_open(&f, "sdmc:/crypto.dmp", FA_OPEN_EXISTING | FA_WRITE);
-        if (res != FR_OK){
-            unsigned int written;
-            f_write(&f, (void*)0x08280000, 0x30000, &written);
-            f_close(&f);
-        }
+        res = f_open(&f, "sdmc:/crypto.dmp", FA_OPEN_ALWAYS | FA_WRITE);
+        //if (res != FR_OK)
+        //    goto retry_sd;
 
-
-        res = f_open(&f, "sdmc:/fw.img", FA_OPEN_EXISTING | FA_READ);
-        if (res != FR_OK) {
-            goto fat_fail;
-        }
-        res = f_read(&f, (void*)ALL_PURPOSE_TMP_BUF, 0x800000, &read);
-        if (res != FR_OK) {
-            goto fat_fail;
-        }
+        unsigned int written = 0;
+        f_write(&f, (void*)0x08280000, 0x30000, &written);
         f_close(&f);
 
-        if (*(u32*)ALL_PURPOSE_TMP_BUF == ANCAST_MAGIC) {
-            loaded_from_fat = 1;
+        if(written != 0x30000){
+            goto retry_sd;
         }
-        serial_send_u32(0x5D5E0008);
+
+        smc_set_notification_led(LEDRAW_ORANGE_PULSE);
+
+
     }
 
 fat_fail:
     //boot.vector = ancast_iop_load("fw.img");
-    if (loaded_from_fat) {
-        boot.vector = ancast_iop_load_from_memory((void*)ALL_PURPOSE_TMP_BUF);
-    }
-    else {
-        boot.vector = ancast_iop_load_from_raw_sector(0x80);
-    }
-    
-    serial_send_u32(0x5D5D0004);
-    if(boot.vector) {
-        boot.mode = 0;
-        menu_reset();
-    } else {
-        smc_set_notification_led(LEDRAW_ORANGE_PULSE);
-        /*while (1) {
-            serial_send_u32(0xF00FAAAA);
-            serial_send(sd_read_buffer[0]);
-            serial_send(sd_read_buffer[1]);
-            serial_send(sd_read_buffer[2]);
-            serial_send(sd_read_buffer[3]);
-        }*/
-        goto retry_sd;
-    }
     printf("Shutting down SD card...\n");
     sdcard_exit();
 
 boot:
     serial_send_u32(0x6D6D0001);
-    // Reset LED to purple if SD card is successful.
-    if (!(pflags_val & (PON_SMC_TIMER | PFLAG_ENTER_BG_NORMAL_MODE)))
-    {
-        smc_set_notification_led(LEDRAW_PURPLE);
-    }
-    serial_send_u32(0x6D6D0002);
-    dc_flushall();
-    ic_invalidateall();
-    serial_send_u32(0x6D6D0003);
-    printf("Shutting down caches and MMU...\n");
-    mem_shutdown();
-    serial_send_u32(0x6D6D0004);
-    switch(boot.mode) {
-        case 0:
-            if(boot.vector) {
-                printf("Vectoring to 0x%08lX...\n", boot.vector);
-            } else {
-                printf("No vector address, hanging!\n");
-                smc_set_notification_led(LEDRAW_ORANGE_PULSE);
-                panic(0);
-            }
-            break;
-        //case 1: smc_power_off(); break;
-        //case 2: smc_reset(); break;
-    }
-    serial_send_u32(0x6D6D0005);
-    // Let minute know that we're launched from boot1
-    memcpy((char*)ALL_PURPOSE_TMP_BUF, PASSALONG_MAGIC_BOOT1, 8);
-
-    serial_send_u32(0x6D6D00FF);
+    panic(0);
     return boot.vector;
 }
 #else // MINUTE_BOOT1
