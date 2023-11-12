@@ -766,9 +766,11 @@ int _dump_mlc(u32 base)
     // Instead of running a single command and waiting for completion, we queue both commands
     // and then wait for them both to complete at the end of each iteration.
     struct sdmmc_command mlc_cmd = {0}, sdcard_cmd = {0};
-
-    u8* sector_buf1 = memalign(32, SDMMC_DEFAULT_BLOCKLEN * SDHC_BLOCK_COUNT_MAX);
-    u8* sector_buf2 = memalign(32, SDMMC_DEFAULT_BLOCKLEN * SDHC_BLOCK_COUNT_MAX);
+    
+    const size_t block_bytes = SDMMC_DEFAULT_BLOCKLEN * SDHC_BLOCK_COUNT_MAX;
+    u8* sector_buf1 = memalign(32, block_bytes);
+    u8* sector_buf2 = memalign(32, block_bytes);
+    u8* test_buf = memalign(32, block_bytes);
 
     u8* mlc_buf = sector_buf2;
     u8* sdcard_buf = sector_buf1;
@@ -800,6 +802,24 @@ int _dump_mlc(u32 base)
                 sres = sdcard_end_write(&sdcard_cmd);
                 if(sres == 0) complete |= 0b10;
             }
+            if(!(complete & 0b01))
+                printf("MLC read error: %u\n", sector);
+            if(!(complete & 0b10))
+                printf("SD write error: %u\n", sdcard_sector);
+        }
+
+        mlc_read(sector, SDHC_BLOCK_COUNT_MAX, test_buf);
+        if(memcmp(mlc_buf, test_buf, block_bytes)){
+            printf("MLC read missmatch at: %lu\n", sector);
+        }
+
+        sdcard_read(sdcard_sector, SDHC_BLOCK_COUNT_MAX, test_buf);
+        if(memcmp(sdcard_buf, test_buf, block_bytes)){
+            printf("MLC read back missmatch at: %lu\n", sector);
+            sdcard_read(sdcard_sector, SDHC_BLOCK_COUNT_MAX, test_buf);
+            if(memcmp(sdcard_buf, test_buf, block_bytes)){
+                printf("MLC read back missmatch 2 at: %lu\n", sector);
+            }
         }
 
         // Swap buffers.
@@ -824,6 +844,7 @@ int _dump_mlc(u32 base)
 
     free(sector_buf1);
     free(sector_buf2);
+    free(test_buf);
 
     return 0;
 }
@@ -877,7 +898,7 @@ int _dump_restore_mlc(u32 base)
         return -3;
     }
     if(console_abort_confirmation_power_no_eject_yes()) 
-        return;
+        return 1;
     printf("MLC: Continuing restore...\n");
 
     // Do one less iteration than we need, due to having to special case the start and end.
