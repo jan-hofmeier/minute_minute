@@ -585,6 +585,11 @@ sdhc_async_response(struct sdhc_host *hp, struct sdmmc_command *cmd)
         cmd->c_error = 1;
         return;
     }
+    if (!ISSET(status, SDHC_COMMAND_COMPLETE)) {
+       printf("command did not complete: error_intr: 0x%x status: 0x%x\n", hp->intr_error_status, status);
+       cmd->c_error = 2;
+       return;
+    }
 
 //  printf("command_complete, continuing...\n");
 
@@ -872,6 +877,7 @@ sdhc_wait_intr_debug(const char *funcname, int line, struct sdhc_host *hp, int m
 breakout:
 
     if (timo == 0) {
+        printf("SDHC wait_intr loop timed out\n");
         status |= SDHC_ERROR_TIMEOUT;
     }
     hp->intr_status &= ~status;
