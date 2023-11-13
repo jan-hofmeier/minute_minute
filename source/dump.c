@@ -808,20 +808,6 @@ int _dump_mlc(u32 base)
                 printf("SD write error: %u\n", sdcard_sector);
         }
 
-        mlc_read(sector, SDHC_BLOCK_COUNT_MAX, test_buf);
-        if(memcmp(mlc_buf, test_buf, block_bytes)){
-            printf("MLC read missmatch at: %lu\n", sector);
-        }
-
-        sdcard_read(sdcard_sector, SDHC_BLOCK_COUNT_MAX, test_buf);
-        if(memcmp(sdcard_buf, test_buf, block_bytes)){
-            printf("MLC read back missmatch at: %lu\n", sector);
-            sdcard_read(sdcard_sector, SDHC_BLOCK_COUNT_MAX, test_buf);
-            if(memcmp(sdcard_buf, test_buf, block_bytes)){
-                printf("MLC read back missmatch 2 at: %lu\n", sector);
-            }
-        }
-
         // Swap buffers.
         if(mlc_buf == sector_buf1) {
             mlc_buf = sector_buf2;
