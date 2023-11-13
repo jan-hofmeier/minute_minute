@@ -796,11 +796,15 @@ int _dump_mlc(u32 base)
             // If starting and ending the command succeeds, mark it as complete.
             if(!(complete & 0b01) && mres == 0) {
                 mres = mlc_end_read(&mlc_cmd);
-                if(mres == 0) complete |= 0b01;
+                if(MMC_R1(mlc_cmd.c_resp) & MMC_R1_ANY_ERROR){
+                    printf("mlc reported error. status: %08lx\n", MMC_R1(mlc_cmd.c_resp));
+                } else if(mres == 0) complete |= 0b01;
             }
             if(!(complete & 0b10) && sres == 0) {
                 sres = sdcard_end_write(&sdcard_cmd);
-                if(sres == 0) complete |= 0b10;
+                if(MMC_R1(sdcard_cmd.c_resp) & MMC_R1_ANY_ERROR){
+                    printf("sdcard reported error. status: %08lx\n", MMC_R1(sdcard_cmd.c_resp));
+                } else if(sres == 0) complete |= 0b10;
             }
             if(!(complete & 0b01))
                 printf("MLC read error: %u\n", sector);
@@ -819,7 +823,7 @@ int _dump_mlc(u32 base)
 
         sdcard_sector += SDHC_BLOCK_COUNT_MAX;
 
-        if((sector % 0x10000) == 0) {
+        if((sector % 0x100000) == 0) {
             printf("MLC: Sector 0x%08lX completed\n", sector);
         }
     }

@@ -813,10 +813,6 @@ sdhc_transfer_data(struct sdhc_host *hp, struct sdmmc_command *cmd)
 #endif
     //if (ISSET(cmd->c_flags, SCF_CMD_READ))
     //        ahb_flush_from(hp->pa.wb);
-    if(MMC_R1(cmd->c_resp) & MMC_R1_ANY_ERROR){
-        printf("Card %lx reported error. status: %08lx\n", hp->ioh, MMC_R1(cmd->c_resp));
-        cmd->c_error = EREMOTEIO;
-    }
 
     if (error != 0)
         cmd->c_error = error;
