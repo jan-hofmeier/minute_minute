@@ -768,15 +768,25 @@ int _dump_mlc(u32 base)
     struct sdmmc_command mlc_cmd = {0}, sdcard_cmd = {0};
     
     const size_t block_bytes = SDMMC_DEFAULT_BLOCKLEN * SDHC_BLOCK_COUNT_MAX;
-    u8* sector_buf1 = memalign(32, block_bytes);
-    u8* sector_buf2 = memalign(32, block_bytes);
-    u8* test_buf = memalign(32, block_bytes);
+    u8* sector_buf1 = memalign(64, block_bytes);
+    if(!sector_buf1){
+        printf("Error allocating buf1\n");
+        return -1;
+    }
+    u8* sector_buf2 = memalign(64, block_bytes);
+    if(!sector_buf2){
+        printf("Error allocating buf2\n");
+        res = -1;
+        goto buf1_free;
+    }
+
+    printf("sector_buff1: %p\nsector_buff2: %p\n", sector_buf1, sector_buf2);
 
     u8* mlc_buf = sector_buf2;
     u8* sdcard_buf = sector_buf1;
 
     // Fill one of the buffers in advance, so SD card has something to work with.
-    do res = mlc_read(0, SDHC_BLOCK_COUNT_MAX, sdcard_buf);
+    do res = mlc_read(0, SDHC_BLOCK_COUNT_MAX, mlc_buf);
     while(res);
 
     // Do one less iteration than we need, due to having to special case the start and end.
@@ -789,8 +799,6 @@ int _dump_mlc(u32 base)
             // Issue commands if we didn't already complete them.
             if(!(complete & 0b01))
                 mres = mlc_start_read(sector, SDHC_BLOCK_COUNT_MAX, mlc_buf, &mlc_cmd);
-            if(!(complete & 0b10))
-                sres = sdcard_start_write(sdcard_sector, SDHC_BLOCK_COUNT_MAX, sdcard_buf, &sdcard_cmd);
 
             // Only end the command if starting it succeeded.
             // If starting and ending the command succeeds, mark it as complete.
@@ -800,26 +808,54 @@ int _dump_mlc(u32 base)
                     printf("mlc reported error. status: %08lx\n", MMC_R1(mlc_cmd.c_resp));
                 } else if(mres == 0) complete |= 0b01;
             }
-            if(!(complete & 0b10) && sres == 0) {
-                sres = sdcard_end_write(&sdcard_cmd);
-                if(MMC_R1(sdcard_cmd.c_resp) & MMC_R1_ANY_ERROR){
-                    printf("sdcard reported error. status: %08lx\n", MMC_R1(sdcard_cmd.c_resp));
-                } else if(sres == 0) complete |= 0b10;
-            }
+
+            // if(!(complete & 0b10))
+            //     sres = sdcard_start_write(sdcard_sector, SDHC_BLOCK_COUNT_MAX, sdcard_buf, &sdcard_cmd);
+
+
+            // if(!(complete & 0b10) && sres == 0) {
+            //     sres = sdcard_end_write(&sdcard_cmd);
+            //     if(MMC_R1(sdcard_cmd.c_resp) & MMC_R1_ANY_ERROR){
+            //         printf("sdcard reported error. status: %08lx\n", MMC_R1(sdcard_cmd.c_resp));
+            //     } else if(sres == 0) complete |= 0b10;
+            // }
+            complete |= 0b10;
+
             if(!(complete & 0b01))
                 printf("MLC read error: %u\n", sector);
             if(!(complete & 0b10))
                 printf("SD write error: %u\n", sdcard_sector);
         }
 
-        // Swap buffers.
-        if(mlc_buf == sector_buf1) {
-            mlc_buf = sector_buf2;
-            sdcard_buf = sector_buf1;
-        } else {
-            mlc_buf = sector_buf1;
-            sdcard_buf = sector_buf2;
+        for(int i=0; i<SDHC_BLOCK_COUNT_MAX; i++){
+            for(int j=0; j<SDMMC_DEFAULT_BLOCKLEN; j+=2){
+                int index = SDMMC_DEFAULT_BLOCKLEN * i + j;
+                if(mlc_buf[index] != (char)(i + j) ||
+                    mlc_buf[index +1] != (char)(j))
+                {
+                    printf("Missmatch at %lx", index);
+                    for (int k = max(0, index-64); k < min(block_bytes, index+64); k++)
+                    {
+                        if (k % 16 == 0) {
+                            printf("\n");
+                        }
+                        printf("%02x ", mlc_buf[k]);
+                    }
+                    printf("\n");
+                    goto next;
+                }
+            }
         }
+        next:
+
+        // Swap buffers.
+        // if(mlc_buf == sector_buf1) {
+        //     mlc_buf = sector_buf2;
+        //     sdcard_buf = sector_buf1;
+        // } else {
+        //     mlc_buf = sector_buf1;
+        //     sdcard_buf = sector_buf2;
+        // }
 
         sdcard_sector += SDHC_BLOCK_COUNT_MAX;
 
@@ -829,12 +865,169 @@ int _dump_mlc(u32 base)
     }
 
     // Finish up the last iteration.
+    // do res = sdcard_write(sdcard_sector, SDHC_BLOCK_COUNT_MAX, sdcard_buf);
+    // while(res);
+
+buf2_free:
+    free(sector_buf2);
+buf1_free:
+    free(sector_buf1);
+
+    return res;
+}
+
+int _dump_test(u32 base)
+{
+    sdcard_ack_card();
+    if(sdcard_check_card() != SDMMC_INSERTED) {
+        printf("SD card is not initialized.\n");
+        return -1;
+    }
+
+    int res = 0, mres = 0, sres = 0;
+    if(base == 0) return -2;
+
+    // This uses "async" read/write functions, combined with double buffering to achieve a
+    // much faster dump. This works because these are two separate host controllers using DMA.
+    // Instead of running a single command and waiting for completion, we queue both commands
+    // and then wait for them both to complete at the end of each iteration.
+    struct sdmmc_command mlc_cmd = {0}, sdcard_cmd = {0};
+
+    u8* sector_buf1 = memalign(32, SDMMC_DEFAULT_BLOCKLEN * SDHC_BLOCK_COUNT_MAX);
+
+    for(int i=0; i<SDHC_BLOCK_COUNT_MAX; i++){
+        for(int j=0; j<SDMMC_DEFAULT_BLOCKLEN; j+=2){
+            sector_buf1[SDMMC_DEFAULT_BLOCKLEN*i + j] = (u8)(i + j);
+            sector_buf1[SDMMC_DEFAULT_BLOCKLEN*i + j +1] = (u8)(j);
+        }
+    }
+
+
+    u8* sdcard_buf = sector_buf1;
+
+    // Do one less iteration than we need, due to having to special case the start and end.
+    u32 sdcard_sector = base;
+    for(u32 sector = 0; sector < (TOTAL_SECTORS - SDHC_BLOCK_COUNT_MAX); sector += SDHC_BLOCK_COUNT_MAX)
+    {
+        int complete = 0b01;
+        // Make sure to retry until the command succeeded, probably superfluous but harmless...
+        while(complete != 0b11) {
+            // Issue commands if we didn't already complete them.
+            //if(!(complete & 0b01))
+            //    mres = mlc_start_read(sector + SDHC_BLOCK_COUNT_MAX, SDHC_BLOCK_COUNT_MAX, mlc_buf, &mlc_cmd);
+            if(!(complete & 0b10))
+                sres = sdcard_start_write(sdcard_sector, SDHC_BLOCK_COUNT_MAX, sdcard_buf, &sdcard_cmd);
+
+            // Only end the command if starting it succeeded.
+            // If starting and ending the command succeeds, mark it as complete.
+            //if(!(complete & 0b01) && mres == 0) {
+            //    mres = mlc_end_read(&mlc_cmd);
+            //    if(mres == 0) complete |= 0b01;
+            //}
+            if(!(complete & 0b10) && sres == 0) {
+                sres = sdcard_end_write(&sdcard_cmd);
+                if(sres == 0) complete |= 0b10;
+            }
+        }
+
+        sdcard_sector += SDHC_BLOCK_COUNT_MAX;
+
+        if((sector % 0x10000) == 0) {
+            printf("MLC: Sector 0x%08lX completed\n", sector);
+        }
+    }
+
+    // Finish up the last iteration.
     do res = sdcard_write(sdcard_sector, SDHC_BLOCK_COUNT_MAX, sdcard_buf);
     while(res);
 
     free(sector_buf1);
-    free(sector_buf2);
-    free(test_buf);
+
+    return 0;
+}
+
+int _dump_test_read(u32 base)
+{
+    sdcard_ack_card();
+    if(sdcard_check_card() != SDMMC_INSERTED) {
+        printf("SD card is not initialized.\n");
+        return -1;
+    }
+
+    int res = 0, mres = 0, sres = 0;
+    if(base == 0) return -2;
+
+    base=0;
+
+    // This uses "async" read/write functions, combined with double buffering to achieve a
+    // much faster dump. This works because these are two separate host controllers using DMA.
+    // Instead of running a single command and waiting for completion, we queue both commands
+    // and then wait for them both to complete at the end of each iteration.
+    struct sdmmc_command mlc_cmd = {0}, sdcard_cmd = {0};
+
+    const size_t block_bytes = SDMMC_DEFAULT_BLOCKLEN * SDHC_BLOCK_COUNT_MAX;
+    u8* sector_buf1 = memalign(32, block_bytes);
+
+    u8* sdcard_buf = sector_buf1;
+
+    // Do one less iteration than we need, due to having to special case the start and end.
+    u32 sdcard_sector = base;
+    for(u32 sector = 0; sector < (TOTAL_SECTORS - SDHC_BLOCK_COUNT_MAX); sector += SDHC_BLOCK_COUNT_MAX)
+    {
+        int complete = 0b01;
+        // Make sure to retry until the command succeeded, probably superfluous but harmless...
+        while(complete != 0b11) {
+            // Issue commands if we didn't already complete them.
+            //if(!(complete & 0b01))
+            //    mres = mlc_start_read(sector + SDHC_BLOCK_COUNT_MAX, SDHC_BLOCK_COUNT_MAX, mlc_buf, &mlc_cmd);
+            if(!(complete & 0b10))
+                sres = mlc_start_read(sdcard_sector, SDHC_BLOCK_COUNT_MAX, sdcard_buf, &sdcard_cmd);
+
+            // Only end the command if starting it succeeded.
+            // If starting and ending the command succeeds, mark it as complete.
+            //if(!(complete & 0b01) && mres == 0) {
+            //    mres = mlc_end_read(&mlc_cmd);
+            //    if(mres == 0) complete |= 0b01;
+            //}
+            if(!(complete & 0b10) && sres == 0) {
+                sres = mlc_end_read(&sdcard_cmd);
+                if(sres == 0) complete |= 0b10;
+            }
+        }
+
+        for(int i=0; i<SDHC_BLOCK_COUNT_MAX; i++){
+            for(int j=0; j<SDMMC_DEFAULT_BLOCKLEN; j+=2){
+                int index = SDMMC_DEFAULT_BLOCKLEN * i + j;
+                if(sdcard_buf[index] != (char)(i + j) ||
+                    sdcard_buf[index +1] != (char)(j))
+                {
+                    printf("Missmatch at %lx", index);
+                    for (int k = max(0, index-64); k < min(block_bytes, index+64); k++)
+                    {
+                        if (k % 16 == 0) {
+                            printf("\n");
+                        }
+                        printf("%02x ", sdcard_buf[k]);
+                    }
+                    printf("\n");
+                    goto next;
+                }
+            }
+        }
+    next:
+
+        sdcard_sector += SDHC_BLOCK_COUNT_MAX;
+
+        if((sector % 0x10000) == 0) {
+            printf("MLC: Sector 0x%08lX completed\n", sector);
+        }
+    }
+
+    // Finish up the last iteration.
+    do res = sdcard_write(sdcard_sector, SDHC_BLOCK_COUNT_MAX, sdcard_buf);
+    while(res);
+
+    free(sector_buf1);
 
     return 0;
 }
@@ -1809,7 +2002,9 @@ void dump_format_rednand(void)
     u32 slccmpt_base = LD_DWORD(mbr.partition[3].lba_start);
 
     printf("Dumping redNAND...\n");
-    res = _dump_copy_rednand(slc_base, slccmpt_base, mlc_base);
+    //res = _dump_copy_rednand(slc_base, slccmpt_base, mlc_base);
+    res = _dump_mlc(mlc_base);
+    //res = _dump_test_read(mlc_base);
     if(res) {
         printf("Failed to dump redNAND (%d)!\n", res);
         goto format_exit;
