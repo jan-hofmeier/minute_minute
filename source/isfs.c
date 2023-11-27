@@ -465,16 +465,25 @@ static bool _isfs_fst_is_dir(const isfs_fst* fst)
     return _isfs_fst_get_type(fst) == 2;
 }
 
-static isfs_fst* _isfs_find_fst(isfs_ctx* ctx, const char* path, void** parent){
+static isfs_fst* _isfs_find_create_fst(isfs_ctx* ctx, const char* path, void** parent, 
+                                        bool create, bool create_recusrive){
     isfs_fst* root = _isfs_get_fst(ctx);
     if(parent)
         *parent = &root->sub;
+    isfs_fst* fst = root;
     u16 next = root->sub;
-    while(next!=0xFFFF){
+    while(true){
         ISFS_debug("remaining path: %s\n", path);
-        isfs_fst* fst = &root[next];
         while(*path== '/') path++;
         const char* remaining = strchr(path, '/');
+
+        if(next!=0xFFFF){
+            if(!create && !create_recusrive)
+                return NULL;
+            
+        }
+
+        fst = &root[next];
 
         size_t size = remaining ? remaining - path : strlen(path);
 
@@ -494,9 +503,11 @@ static isfs_fst* _isfs_find_fst(isfs_ctx* ctx, const char* path, void** parent){
         next = fst->sub; // go down
         path = remaining;
     }
-    return NULL;
+    if(create | create_recusrive){
+        const char* remaining = strchr(path, '/');
+        if(remaining)
+    }
 }
-
 
 char* _isfs_do_volume(const char* path, isfs_ctx** ctx)
 {
