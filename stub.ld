@@ -18,7 +18,7 @@ __irqstack_size = 0x40000;
 __excstack_size = 0x40000;
 
 MEMORY {
-	sram0		: ORIGIN = 0xffff0000, LENGTH = 64K
+	sram0		: ORIGIN = 0xffff0000, LENGTH = 10M
 	mem2		: ORIGIN = 0x10100000, LENGTH = 60M
 }
 
@@ -41,7 +41,7 @@ SECTIONS
 		*(.glue_7)
 		*(.glue_7t)
 		. = ALIGN(4);
-	} >mem2
+	} >sram0
 
 	.rodata :
 	{
@@ -51,7 +51,7 @@ SECTIONS
 		*(.rodata.*)
 		*(.gnu.linkonce.r*)
 		. = ALIGN(4);
-	} >mem2
+	} >sram0
 
 	.data :
 	{
@@ -59,7 +59,7 @@ SECTIONS
 		*(.data.*)
 		*(.gnu.linkonce.d*)
 		. = ALIGN(4);
-	} >mem2
+	} >sram0
 
 	.bss :
 	{
@@ -70,7 +70,7 @@ SECTIONS
 		*(COMMON)
 		. = ALIGN(4);
 		__bss_end = . ;
-	} >mem2
+	} >sram0
 
 	.stack :
 	{
@@ -88,15 +88,15 @@ SECTIONS
 		. = ALIGN(16);
 		__excstack_addr = .;
 		. = ALIGN(4);
-	} >mem2
+	} >sram0
 
 	.heap :
 	{
 		__end__ = .;
 		__heap_start__ = .;
-		__heap_end__ = (ORIGIN(mem2) + LENGTH(mem2));
+		__heap_end__ = (ORIGIN(sram0) + LENGTH(sram0));
 		. = __heap_end__;
-	} >mem2
+	} >sram0
 
 	/DISCARD/ :
 	{

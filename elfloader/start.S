@@ -86,5 +86,6 @@ done_bss:
     mov r1, r0
     mov r0, r4
     mov pc, r1
+    @ bx r1
 
 .pool

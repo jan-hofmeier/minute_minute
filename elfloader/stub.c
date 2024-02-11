@@ -305,6 +305,11 @@ void *_main(void *base)
     if (!is_boot1) {
         serial_send_u32(0xF00FCAFA);
     }
+
+    serial_send_u32(entry);
+
+    serial_send_u32(*(u32*)entry);
+
     return entry;
 }
 

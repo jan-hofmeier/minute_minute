@@ -88,7 +88,7 @@ u32 _main(void *base)
     printf("minute loading\n");
 
     serial_force_terminate();
-    udelay(500);
+    udelay(50000);
 
     // Signal binary printing
     serial_send_u32(0x55AA55AA);
@@ -96,7 +96,7 @@ u32 _main(void *base)
     serial_send_u32(0x55AA55AA);
     serial_send_u32(0x55AA55AA);
     serial_send_u32(0xBEEFCAFE);
-    udelay(500);
+    udelay(50000);
 
     // Same as boot1:
     //srand(read32(LT_TIMER));
@@ -246,14 +246,62 @@ u32 _main(void *base)
     serial_send_u32(latte_get_hw_version());
     serial_send_u32(0x4D454D32); // MEM2
 
+
+    serial_send_u32(0x55AA55AA);
+    serial_send_u32(0x55AA55AA);
+    serial_send_u32(0x55AA55AA);
+    serial_send_u32(0x55AA55AA);
+    serial_send_u32(0xBEEFCAFE);
+    udelay(500000);
+
     // Init DRAM
     init_mem2(mem_mode);
     udelay(500000);
+
+    /*
+    u32 test_pattern = 0xffffffff;
+
+    for (u32 j = 0x10000000; j != 0x90000000; j += 4 ){
+        *(vu32*)j = test_pattern;
+    }
+
+
+    for (u32 j = 0x10000000; j != 0x90000000; j += 4 ){
+        *(vu32*)j = test_pattern;
+    }
+
+    bool badblock = 0;
+    u32 badstart = 0;
+    u32 badend = 0;
+    for (u32 j = 0x10000000; j != 0x90000000; j += 4 ){
+        u32 readback = *(vu32*)j;
+        bool bad = readback != test_pattern;
+        if(bad)
+            badstart = j;
+        if(bad && !badblock ){
+            serial_send_u32(0xBAADAAAA);
+            serial_send_u32(readback);
+            serial_send_u32(j);
+            badblock = true;
+        }
+        if(!bad && badblock){
+            if(badstart + 64 * 1024 == j){
+                serial_send_u32(badend);
+                badblock = false;
+            }else{
+                badend = j;
+            }
+        }
+    }
+    */
+
+    serial_send_u32(0xFAFBFCFD);
 
     // Test that DRAM is working/refreshing correctly
     int is_good = 1;
     for (int i = 0; i < 0x10; i++)
     {
+        serial_send_u32(i);
         if ( i )
         {
             int v12 = (pflags_val & PFLAG_DDR_SREFRESH) ? mem_clocks_related_3(mem_mode | DRAM_MODE_40 | DRAM_MODE_20 | DRAM_MODE_4) : 0;
@@ -263,20 +311,24 @@ u32 _main(void *base)
                 break;
             }
         }
-        for (u32 j = 0x10000000; j != 0x10000400; j += 8 )
+        for (u32 j = 0x10000000; j != 0x90000000; j += 8 )
         {
             *(vu32*)j = 0x12345678;
             *(vu32*)(j + 4) = 0x9ABCDEF0;
         }
 
         is_good = 1;
-        for (u32 j = 0x10000000; j != 0x10000400; j += 8 )
+        for (u32 j = 0x10000000; j != 0x90000000; j += 8 )
         {
             if (*(vu32*)j != 0x12345678) {
                 is_good = 0;
+                serial_send_u32(0xBAADAAAA);
+                serial_send_u32(j);
                 break;
             }
             if (*(vu32*)(j + 4) != 0x9ABCDEF0) {
+                serial_send_u32(0xBAADBBBB);
+                serial_send_u32(j);
                 is_good = 0;
                 break;
             }
@@ -430,6 +482,8 @@ fat_fail:
     // Let minute know that we're launched from boot1
     memcpy((char*)ALL_PURPOSE_TMP_BUF, PASSALONG_MAGIC_BOOT1, 8);
 
+    serial_send_u32(0xffffffff);
+
     return boot.vector;
 }
 #else // MINUTE_BOOT1
@@ -469,6 +523,12 @@ u32 _main(void *base)
     (void)base;
     int res = 0; (void)res;
     int has_no_otp_bin = 0;
+
+    //while(1){
+    serial_send_u32(0x03abcdef);
+    //}
+
+    serial_send_u32(0xaaaaaaaa);
 
     if (!memcmp((char*)ALL_PURPOSE_TMP_BUF, PASSALONG_MAGIC_BOOT1, 8)) {
         main_loaded_from_boot1 = 1;
