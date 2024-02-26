@@ -258,42 +258,54 @@ u32 _main(void *base)
     init_mem2(mem_mode);
     udelay(500000);
 
-    /*
     u32 test_pattern = 0xffffffff;
 
     for (u32 j = 0x10000000; j != 0x90000000; j += 4 ){
         *(vu32*)j = test_pattern;
     }
+    //bool chips[4] = { false, true, true, true};
 
+    u32 masks[2] = { 0x0000ffff, 0xffffffff};
 
-    for (u32 j = 0x10000000; j != 0x90000000; j += 4 ){
-        *(vu32*)j = test_pattern;
-    }
+    u32 stripe = 1;
+
+    u32 mask = masks[stripe&1];
 
     bool badblock = 0;
     u32 badstart = 0;
     u32 badend = 0;
-    for (u32 j = 0x10000000; j != 0x90000000; j += 4 ){
-        u32 readback = *(vu32*)j;
-        bool bad = readback != test_pattern;
-        if(bad)
-            badstart = j;
-        if(bad && !badblock ){
-            serial_send_u32(0xBAADAAAA);
-            serial_send_u32(readback);
-            serial_send_u32(j);
-            badblock = true;
-        }
-        if(!bad && badblock){
-            if(badstart + 64 * 1024 == j){
-                serial_send_u32(badend);
+    //not checking the end, as we use that for scratch
+    for (u32 i = 0x10000000 + stripe * 256; i < 0x90000000; i += 512 ){
+        for(u32 j=i; j<i+256; j++){
+            //u32 a = 0x80000000 + j&0xffff;
+            //*(vu32*)a = ~test_pattern;
+            u32 readback = *(vu32*)j;
+
+            bool bad = (readback & mask) != (test_pattern & mask);
+            if(bad)
+                badstart = j;
+            if(bad && !badblock ){
+                serial_send_u32(0xBAADAAAA);
+                serial_send_u32(readback);
+                serial_send_u32(j);
+                badblock = true;
+            }
+            if(!bad && badblock){
+                serial_send_u32(j);
                 badblock = false;
-            }else{
-                badend = j;
+                // if(badstart + 64 * 1024 == j){
+                //     serial_send_u32(badend);
+                //     badblock = false;
+                // }else{
+                //     badend = j;
+                // }
             }
         }
     }
-    */
+
+    if(badblock){
+        serial_send_u32(0x90000000);
+    }
 
     serial_send_u32(0xFAFBFCFD);
 
