@@ -269,9 +269,9 @@ u32 _main(void *base)
     //bool chips[4] = { false, true, true, true};
 
     //u32 masks[2] = { 0x0000ffff, 0xffffffff};
-    u32 masks[2] = { 0xffff0000, 0xffffffff};
+    u32 masks[2] = { 0xffffffff, 0xffffffff};
 
-    u32 stripe = 0;
+    for(u32 stripe = 0; stripe<2; stripe++){
 
     u32 mask = masks[stripe&1];
 
@@ -309,6 +309,8 @@ u32 _main(void *base)
 
     if(badblock){
         serial_send_u32(0x90000000);
+    }
+
     }
     serial_send_u32(0xEEEEEEEE);
     serial_send_u32(0xFAFBFCFD);
