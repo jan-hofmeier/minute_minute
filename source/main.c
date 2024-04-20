@@ -123,7 +123,7 @@ u32 _main(void *base)
     (void)base;
     int res = 0; (void)res;
 
-    int start_time = read32(LT_TIMER);
+    //int start_time = read32(LT_TIMER);
 
     gfx_init();
     exi_init();
@@ -543,7 +543,7 @@ boot:
 #endif
 
     BOOT1_PASSALONG->boot_info.boot_state = pflags_val;
-    BOOT1_PASSALONG->start_time = start_time;
+    //BOOT1_PASSALONG->start_time = start_time;
 
     serial_send_u32(0x6D6D00FF);
     return boot.vector;
