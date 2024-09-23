@@ -29,6 +29,8 @@ struct {
 };
 
 int minini_result = 0;
+bool minini_config_using_slc = false;
+FILE* minini_config_file;
 
 static int _minini_handler(void* user, const char* section, const char* name, const char* value)
 {
@@ -49,17 +51,57 @@ static int _minini_handler(void* user, const char* section, const char* name, co
     return 0;
 }
 
+void minini_open_config(void)
+{
+    // Check to see if there's a config file on the SD Card first
+    minini_config_file = fopen("sdmc:/minute/minute.ini", "r");
+
+    // If not found, make sure we let the code know the config is going towards the SLC
+    if(!minini_config_file)
+    {
+        minini_config_using_slc = true;
+    }
+
+    // Now check to see if a config file is found on the SLC. This finds a config file from where the fw.img file is usually located at
+    if(minini_config_using_slc)
+    {
+        minini_config_file = fopen("slc:/sys/hax/minute/minute.ini", "r");
+    }
+}
+
 int minini_init(void)
 {
-    FILE* file = fopen("sdmc:/minute/minute.ini", "r");
-    if(!file) {
-        printf("minini: Failed to open `sdmc:/minute/minute.ini`!\n");
+    // Open the config file from SD first, then SLC last
+    minini_open_config();
+
+    // The config file from either SD or SLC is not found, so let the user know
+    if(!minini_config_file)
+    {
+        printf("minini: Failed to open a config file from SD and SLC!\n");
+        printf("A config file is read from the SD first:\n");
+        printf("`sdmc:/minute/minute.ini`\n");
+        printf("Then if no SD / SD config is found, the SLC is used last:\n");
+        printf("`slc:/sys/hax/minute/minute.ini`\n");
+
         return 1;
     }
 
-    int res = ini_parse_file(file, _minini_handler, NULL);
+    // Send a message indicating which config is being used
+    if(minini_config_using_slc)
+    {
+        printf("minini: Using config file from SLC\n")
+    }
+    else
+    {
+        printf("minini: Using config file from SD\n")
+    }
 
-    fclose(file);
+    // Parse the config file
+    int res = ini_parse_file(minini_config_file, _minini_handler, NULL);
+
+    // Free the memory by closing the saved config file, since we're done with it
+    fclose(minini_config_file);
+
     return res;
 }
 
