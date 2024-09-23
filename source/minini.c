@@ -51,7 +51,7 @@ static int _minini_handler(void* user, const char* section, const char* name, co
     return 0;
 }
 
-void minini_open_config(void)
+void minini_open_config()
 {
     // Check to see if there's a config file on the SD Card first
     minini_config_file = fopen("sdmc:/minute/minute.ini", "r");
@@ -89,11 +89,11 @@ int minini_init(void)
     // Send a message indicating which config is being used
     if(minini_config_using_slc)
     {
-        printf("minini: Using config file from SLC\n")
+        printf("minini: Using config file from SLC\n");
     }
     else
     {
-        printf("minini: Using config file from SD\n")
+        printf("minini: Using config file from SD\n");
     }
 
     // Parse the config file
