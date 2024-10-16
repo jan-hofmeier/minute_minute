@@ -11,6 +11,8 @@
 #ifndef _MININI_H
 #define _MININI_H
 
+#include <stdio.h>
+
 #include "types.h"
 
 typedef int (*minini_handler)(const char* key, const char* value);
@@ -21,6 +23,7 @@ unsigned long long minini_get_uint(const char* value, unsigned long long default
 double minini_get_real(const char* value, double default_value);
 size_t minini_get_bytes(const char* value, void* out, size_t max);
 
+void minini_open_config();
 int minini_init(void);
 
 int mcp_ini();
